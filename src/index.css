@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/* This is how you define your custom 'archive' colors in v4 */
+@theme {
+  --color-archive-black: #0a0a0a;
+  --color-archive-surface: #121212;
+  --color-archive-muted: #282828;
+  --color-archive-accent: #1db954;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-archive-black);
+  color: white;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; 
+  height: 100vh;
+  width: 100vw;
+  font-family: sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide scrollbars for horizontal scrolling sections */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom scrollbar for lyrics section */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--color-archive-muted);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-archive-accent);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #1ed760;
+}
