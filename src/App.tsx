@@ -374,7 +374,7 @@ function App() {
                       </h1>
                       <div className="flex items-center justify-between mt-4">
                         <p className="text-zinc-500 text-sm font-medium uppercase tracking-widest">
-                          {collectionReleases.length} {collection.releaseType}s
+                          {collectionReleases.length} {collection.releaseType}s • {Object.keys(tracks).filter(trackId => tracks[trackId].collection_id === selectedCollectionId).length} tracks
                         </p>
                         <div className="flex gap-2">
                           <button
