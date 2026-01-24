@@ -118,22 +118,14 @@ function App() {
     };
     loadData();
   }, [loadCollections, loadTracks, loadLatestRelease]);
+
   // Load releases when a collection is selected
   useEffect(() => {
     if (selectedCollectionId) {
-      // Load releases from Supabase instead of static manifest
-      supabase
-        .from('releases')
-        .select('*')
-        .eq('collection_id', selectedCollectionId)
-        .order('release_date', { ascending: false })
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('Failed to load collection releases:', error);
-            setCollectionReleases([]);
-          } else {
-            setCollectionReleases(data || []);
-          }});
+      fetch(`archives/${selectedCollectionId}/manifest.json`)
+        .then(res => res.json())
+        .then(data => setCollectionReleases(data.releases))
+        .catch(err => console.error('Failed to load collection releases:', err));
     }
   }, [selectedCollectionId]);
 

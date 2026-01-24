@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
 
-// Track from the track registry
+// Track from Supabase
 export interface Track {
   id: string;
   title: string;
-  artist: string;
+  artist: string | null;
   date_written: string;
   lyrics: string;
   audio_file: string;
@@ -12,30 +13,30 @@ export interface Track {
   duration: number;
   collection_id: string;
   first_appearance: string;
+  track_order: number | null;
 }
 
-// Collection metadata (also referred to as "Channels")
+// Collection metadata
 export interface Collection {
   id: string;
   name: string;
   artist: string;
-  releaseType: string;
-  folderPath: string;
+  release_type: string;
   color: string;
   description: string;
   active: boolean;
-  isVirtual?: boolean; // For dynamic channels like "Promoted"
+  is_virtual?: boolean;
 }
 
-// Release metadata from manifest
+// Release metadata
 export interface Release {
+  id: number;
   release_number: number;
   release_type: string;
   release_date: string | null;
   release_image: string | null;
   track_count: number;
   total_duration: number;
-  data_file: string;
 }
 
 // Release with full track data
@@ -57,18 +58,18 @@ interface PlayerState {
   currentRelease: Release | null;
   isExpanded: boolean;
   isPlaying: boolean;
-  currentTime: number; // Current playback position in seconds
-  seekHandler: ((time: number) => void) | null; // Function to seek in audio
-  repeatMode: 'off' | 'one' | 'all'; // Repeat mode
+  currentTime: number;
+  seekHandler: ((time: number) => void) | null;
+  repeatMode: 'off' | 'one' | 'all';
   
   // Queue state
-  queue: string[]; // Array of track IDs
+  queue: string[];
   currentQueueIndex: number;
   queueMode: 'global' | 'collection' | 'release' | null;
-  queueContext: string | null; // collection_id or release key
+  queueContext: string | null;
   
   // Promoted tracks
-  promotedTracks: Set<string>; // Set of promoted track IDs
+  promotedTracks: Set<string>;
   
   // Actions
   loadCollections: () => Promise<void>;
@@ -105,80 +106,73 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   queueContext: null,
   promotedTracks: new Set(),
 
-  // Load collections from collections.json
+  // Load collections from Supabase
   loadCollections: async () => {
     try {
-      // this is where we put the API endpoint
-      const response = await fetch('archives/collections.json');
-      const data = await response.json();
+      const { data, error } = await supabase
+        .from('collections')
+        .select('*')
+        .eq('active', true)
+        .order('is_virtual', { ascending: false });
       
-      // Add virtual "Promoted" channel
-      const promotedChannel: Collection = {
-        id: 'promoted',
-        name: 'Promoted',
-        artist: 'Jackie Puppet Band',
-        releaseType: 'Track',
-        folderPath: '',
-        color: '#fbbf24', // Amber/yellow color
-        description: 'Your promoted tracks',
-        active: true,
-        isVirtual: true
-      };
+      if (error) throw error;
       
-      set({ collections: [promotedChannel, ...data.collections] });
+      set({ collections: data || [] });
     } catch (error) {
       console.error('Failed to load collections:', error);
     }
   },
 
-  // Load track registry from tracks.json
+  // Load all tracks from Supabase
   loadTracks: async () => {
     try {
-      const response = await fetch('archives/tracks.json');
-      const data = await response.json();
-      set({ tracks: data.tracks });
+      const { data, error } = await supabase
+        .from('tracks')
+        .select('*');
+      
+      if (error) throw error;
+      
+      // Convert array to Record<string, Track>
+      const tracksRecord: Record<string, Track> = {};
+      data?.forEach(track => {
+        tracksRecord[track.id] = track;
+      });
+      
+      set({ tracks: tracksRecord });
     } catch (error) {
       console.error('Failed to load tracks:', error);
     }
   },
 
-  // Load latest release across all collections
+  // Load latest release from Supabase
   loadLatestRelease: async () => {
     try {
-      const { collections, tracks } = get();
+      const { data, error } = await supabase
+        .from('releases')
+        .select(`
+          *,
+          collection:collections!inner(id, name)
+        `)
+        .order('release_date', { ascending: false })
+        .limit(1)
+        .single();
       
-      let latestRelease: ReleaseWithTracks | null = null;
-      let latestDate = '';
+      if (error) throw error;
+      if (!data) return;
       
-      // Check each collection's manifest
-      for (const collection of collections) {
-        
-        if (collection.isVirtual)
-          continue;
-
-        const manifestResponse = await fetch(`archives/${collection.id}/manifest.json`);
-        const manifest = await manifestResponse.json();
-        
-        // Find the most recent release in this collection
-        for (const release of manifest.releases) {
-          if (release.release_date && release.release_date > latestDate) {
-            latestDate = release.release_date;
-            
-            // Get track IDs for this release from the track registry
-            const releaseTrackIds = Object.keys(tracks).filter(
-              trackId => tracks[trackId].collection_id === collection.id &&
-                         tracks[trackId].first_appearance === `${release.release_type} ${release.release_number}`
-            );
-            
-            latestRelease = {
-              ...release,
-              collection_id: collection.id,
-              collection_name: collection.name,
-              track_ids: releaseTrackIds
-            };
-          }
-        }
-      }
+      // Get tracks for this release
+      const { data: trackData } = await supabase
+        .from('tracks')
+        .select('id')
+        .eq('release_id', data.id)
+        .order('track_order');
+      
+      const latestRelease: ReleaseWithTracks = {
+        ...data,
+        collection_id: data.collection.id,
+        collection_name: data.collection.name,
+        track_ids: trackData?.map(t => t.id) || []
+      };
       
       set({ latestRelease });
     } catch (error) {
@@ -192,11 +186,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const track = tracks[trackId];
     
     if (track) {
-      // Find the track in the current queue
       const indexInQueue = queue.indexOf(trackId);
       
       if (indexInQueue >= 0) {
-        // Track is in the queue, just update the index
         set({ 
           currentTrack: track,
           currentRelease: release || null,
@@ -205,7 +197,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           currentTime: 0
         });
       } else {
-        // Track not in queue, create a single-track queue
         set({ 
           currentTrack: track,
           currentRelease: release || null,
@@ -224,7 +215,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   
   togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
 
-  // Set up a queue and start playing
   setQueue: (trackIds: string[], mode: 'global' | 'collection' | 'release', context?: string) => {
     set({ 
       queue: trackIds,
@@ -234,11 +224,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 
-  // Play next track in queue
   playNext: () => {
     const { queue, currentQueueIndex, tracks, repeatMode } = get();
     
-    // If repeat one, the audio hook handles it - don't change tracks
     if (repeatMode === 'one') {
       return;
     }
@@ -247,12 +235,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     
     let nextIndex = currentQueueIndex + 1;
     
-    // Loop back to start if at end (only if repeat all)
     if (nextIndex >= queue.length) {
       if (repeatMode === 'all') {
         nextIndex = 0;
       } else {
-        return; // Stop at end if repeat is off
+        return;
       }
     }
     
@@ -269,7 +256,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  // Play previous track in queue
   playPrevious: () => {
     const { queue, currentQueueIndex, tracks } = get();
     
@@ -277,7 +263,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     
     let prevIndex = currentQueueIndex - 1;
     
-    // Loop to end if at start
     if (prevIndex < 0) {
       prevIndex = queue.length - 1;
     }
