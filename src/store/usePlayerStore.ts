@@ -75,6 +75,7 @@ interface PlayerState {
   loadCollections: () => Promise<void>;
   loadTracks: () => Promise<void>;
   loadLatestRelease: () => Promise<void>;
+  loadPromotedTracks: () => Promise<void>;
   playTrack: (trackId: string, release?: Release) => void;
   setExpanded: (val: boolean) => void;
   togglePlay: () => void;
@@ -83,7 +84,7 @@ interface PlayerState {
   setQueue: (trackIds: string[], mode: 'global' | 'collection' | 'release', context?: string) => void;
   setCurrentTime: (time: number) => void;
   seekTo: (time: number) => void;
-  togglePromote: (trackId: string) => void;
+  togglePromote: (trackId: string) => Promise<void>;
   isPromoted: (trackId: string) => boolean;
   cycleRepeatMode: () => void;
 }
@@ -289,17 +290,50 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  togglePromote: (trackId: string) => {
+  loadPromotedTracks: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('promoted_tracks')
+        .select('track_id');
+      
+      if (error) throw error;
+      
+      const promotedSet = new Set(data?.map(item => item.track_id) || []);
+      set({ promotedTracks: promotedSet });
+    } catch (error) {
+      console.error('Failed to load promoted tracks:', error);
+    }
+  },
+
+  togglePromote: async (trackId: string) => {
     const { promotedTracks } = get();
     const newPromoted = new Set(promotedTracks);
     
-    if (newPromoted.has(trackId)) {
-      newPromoted.delete(trackId);
-    } else {
-      newPromoted.add(trackId);
+    try {
+      if (newPromoted.has(trackId)) {
+        // Remove from database
+        const { error } = await supabase
+          .from('promoted_tracks')
+          .delete()
+          .eq('track_id', trackId);
+        
+        if (error) throw error;
+        newPromoted.delete(trackId);
+      } else {
+        // Add to database
+        const { error } = await supabase
+          .from('promoted_tracks')
+          .insert({ track_id: trackId });
+        
+        if (error) throw error;
+        newPromoted.add(trackId);
+      }
+      
+      set({ promotedTracks: newPromoted });
+    } catch (error) {
+      console.error('Failed to toggle promote:', error);
+      throw error;
     }
-    
-    set({ promotedTracks: newPromoted });
   },
 
   isPromoted: (trackId: string) => {

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { usePlayerStore } from './store/usePlayerStore';
+import { useAuthStore } from './store/useAuthStore';
 import type { Collection, Release } from './store/usePlayerStore'
 import { useAudio } from './hooks/useAudio'
 import { motion } from 'framer-motion';
-import { Play, Pause, SkipForward, ChevronDown, Home, Folder, CircleArrowUp, Repeat, Repeat1 } from 'lucide-react';
+import { Play, Pause, SkipForward, ChevronDown, Home, Folder, CircleArrowUp, Repeat, Repeat1, LogIn, LogOut } from 'lucide-react';
 import { supabase } from './lib/supabase';
+import { LoginModal } from './components/LoginModal';
 
 function App() {
   const {
@@ -21,6 +23,7 @@ function App() {
     loadCollections,
     loadTracks,
     loadLatestRelease,
+    loadPromotedTracks,
     setQueue,
     playNext,
     playPrevious,
@@ -31,6 +34,14 @@ function App() {
     repeatMode,
     cycleRepeatMode
   } = usePlayerStore();
+
+  const { 
+    user, 
+    isAdmin, 
+    checkAuth, 
+    signOut, 
+    setShowLoginModal 
+  } = useAuthStore();
 
   const [currentView, setCurrentView] = useState<'home' | 'collections'>('home');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -112,12 +123,14 @@ function App() {
   // Load data on mount
   useEffect(() => {
     const loadData = async () => {
+      await checkAuth();
       await loadCollections();
       await loadTracks();
       await loadLatestRelease();
+      await loadPromotedTracks();
     };
     loadData();
-  }, [loadCollections, loadTracks, loadLatestRelease]);
+  }, [loadCollections, loadTracks, loadLatestRelease, loadPromotedTracks, checkAuth]);
   // Load releases when a collection is selected
   useEffect(() => {
     if (selectedCollectionId) {
@@ -168,19 +181,42 @@ function App() {
         {currentView === 'home' ? (
           <>
             <header className="mb-8">
-              <h1 className="text-3xl font-black tracking-tighter italic">SONIC TWIST RADIO</h1>
-              <p className="text-zinc-500 text-sm font-medium uppercase tracking-widest">by Jackie Puppet Band</p>
-              <p className="text-zinc-600 text-xs mt-2">
-                {Object.keys(tracks).length} songs in {collections.reduce((total, collection) => {
-                  // Count releases for this collection from the tracks
-                  const releases = new Set(
-                    Object.values(tracks)
-                      .filter(track => track.collection_id === collection.id)
-                      .map(track => track.first_appearance)
-                  );
-                  return total + releases.size;
-                }, 0)} releases
-              </p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="text-3xl font-black tracking-tighter italic">SONIC TWIST RADIO</h1>
+                  <p className="text-zinc-500 text-sm font-medium uppercase tracking-widest">by Jackie Puppet Band</p>
+                  <p className="text-zinc-600 text-xs mt-2">
+                    {Object.keys(tracks).length} songs in {collections.reduce((total, collection) => {
+                      // Count releases for this collection from the tracks
+                      const releases = new Set(
+                        Object.values(tracks)
+                          .filter(track => track.collection_id === collection.id)
+                          .map(track => track.first_appearance)
+                      );
+                      return total + releases.size;
+                    }, 0)} releases
+                  </p>
+                </div>
+                <div>
+                  {user ? (
+                    <button
+                      onClick={() => signOut()}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-archive-surface border border-archive-muted hover:border-archive-accent transition-colors text-sm"
+                    >
+                      <LogOut size={16} />
+                      <span>{isAdmin ? 'Admin' : 'User'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowLoginModal(true)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-archive-surface border border-archive-muted hover:border-archive-accent transition-colors text-sm"
+                    >
+                      <LogIn size={16} />
+                      <span>Login</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </header>
 
             {/* RANDOM TRACK */}
@@ -698,18 +734,20 @@ function App() {
                   </div>
 
                   {/* Promote */}
-                  <button
-                    onClick={() => currentTrack && togglePromote(currentTrack.id)}
-                    className={`p-2 rounded-lg transition-colors ${currentTrack && isPromoted(currentTrack.id)
-                      ? 'text-archive-accent'
-                      : 'text-zinc-500 hover:text-white'
-                      }`}
-                  >
-                    <CircleArrowUp
-                      size={20}
-                      strokeWidth={currentTrack && isPromoted(currentTrack.id) ? 2.5 : 2}
-                    />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => currentTrack && togglePromote(currentTrack.id)}
+                      className={`p-2 rounded-lg transition-colors ${currentTrack && isPromoted(currentTrack.id)
+                        ? 'text-archive-accent'
+                        : 'text-zinc-500 hover:text-white'
+                        }`}
+                    >
+                      <CircleArrowUp
+                        size={20}
+                        strokeWidth={currentTrack && isPromoted(currentTrack.id) ? 2.5 : 2}
+                      />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -821,6 +859,9 @@ function App() {
           <span className="text-xs font-medium">Channels</span>
         </button>
       </div>
+
+      {/* LOGIN MODAL */}
+      <LoginModal />
     </div>
   );
 }
