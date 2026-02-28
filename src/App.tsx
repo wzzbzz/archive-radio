@@ -510,7 +510,7 @@ function App() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <h3 className="text-lg font-bold">
-                                    {release.release_type} {release.release_number}
+                                    {release.release_title || `${release.release_type} ${release.release_number}`}
                                   </h3>
                                   <div className="flex gap-3 mt-2 text-xs text-zinc-500">
                                     <span>{release.track_count} tracks</span>

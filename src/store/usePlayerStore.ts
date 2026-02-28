@@ -33,6 +33,7 @@ export interface Release {
   id: number;
   release_number: number;
   release_type: string;
+  release_title: string | null;
   release_date: string | null;
   release_image: string | null;
   track_count: number;
